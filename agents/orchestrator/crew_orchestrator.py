@@ -387,7 +387,7 @@ class CrewOrchestrator(BaseAgent):
             {
                 "type": "Product Placement",
                 "severity": "Medium",
-                "description": "Coca-Cola products not placed at eye level as per contract",
+                "description": "CPG products not placed at eye level as per contract",
                 "location": "Aisle 3, Shelf 2"
             },
             {
@@ -403,7 +403,7 @@ class CrewOrchestrator(BaseAgent):
     def _generate_mock_recommendations(self) -> List[str]:
         """Generate mock recommendations for testing."""
         recommendations = [
-            "Relocate Coca-Cola products to eye-level positions in beverage aisle",
+            "Relocate CPG products to eye-level positions in beverage aisle",
             "Install promotional end cap display for summer campaign",
             "Ensure proper spacing between competing products",
             "Update shelf tags to match current promotional pricing"

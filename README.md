@@ -45,8 +45,8 @@ python main.py
 #### 1. Download and Setup
 ```
 # Create project directory
-mkdir coca-cola-compliance-agents
-cd coca-cola-compliance-agents
+mkdir compliance_ai_agents
+cd compliance_ai_agents
 
 # Copy all the files from the playground above into respective directories
 # Then run setup
