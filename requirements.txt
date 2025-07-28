@@ -1,49 +1,40 @@
-# Core frameworks
-crewai==0.1.55
-langchain==0.1.0
-autogen-agentchat==0.2.0
-langgraph==0.0.26
+# Core AI Frameworks
+crewai==0.150.0
+langchain-community>=0.0.13
+langchain-core>=0.1.0
+langchain-openai>=0.0.5
+autogen-agentchat>=0.2.0
 
-# Azure SDK (mocked)
-azure-storage-blob==12.19.0
-azure-servicebus==7.11.0
-azure-cognitiveservices-vision-computervision==0.9.0
-azure-cosmos==4.5.1
+# Pydantic and Settings
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0
 
-# Web framework
-fastapi==0.104.1
-uvicorn==0.24.0
-websockets==12.0
-
-# CLI
-click==8.1.7
-
-# Data processing
-pandas==2.1.3
-numpy==1.25.2
-pillow==10.1.0
-opencv-python==4.8.1.78
+# Azure Services
+azure-storage-blob>=12.26.0
+azure-servicebus>=7.11.0
+azure-identity>=1.15.0
+azure-cognitiveservices-vision-computervision>=0.9.0
 
 # Database
-sqlalchemy==2.0.23
-alembic==1.12.1
+pymongo>=4.6.0
+motor>=3.3.0
 
-# Configuration
-pydantic==2.5.0
-python-dotenv==1.0.0
+# Web Framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# Data Generation and Testing
+faker>=37.4.2
 
 # Utilities
-aiofiles==23.2.1
-httpx==0.25.2
-python-multipart==0.0.6
-jinja2==3.1.2
-
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-mock==3.12.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+Pillow>=10.0.0
+pandas>=2.1.0
+numpy>=1.24.0
 
 # Development
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0

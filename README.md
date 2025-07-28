@@ -40,6 +40,51 @@ cd dashboard && npm install && cd ..
 python main.py
 ```
 
+### Complete Setup Instructions
+
+#### 1. Download and Setup
+```
+# Create project directory
+mkdir coca-cola-compliance-agents
+cd coca-cola-compliance-agents
+
+# Copy all the files from the playground above into respective directories
+# Then run setup
+python setup.py
+```
+
+#### 2. Quick Start Commands
+```
+# Activate environment
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
+
+# Generate mock data
+python cli.py generate-mock-data
+
+# Run single compliance check
+python cli.py check-compliance --store-id STORE_0001
+
+# Start continuous monitoring
+python cli.py start-monitoring
+
+# Check system status
+python cli.py status
+```
+
+#### 3. Docker Setup (Alternative)
+```
+# Build and run with Docker
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
 ### Access Points
 - Dashboard: http://localhost:3000
 - API: http://localhost:8000

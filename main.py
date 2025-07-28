@@ -28,44 +28,67 @@ class ComplianceMonitoringSystem:
         self.blob_storage = BlobStorageService()
         self.a2a_protocol = A2AProtocol()
         self.mock_generator = MockDataGenerator()
+        self.initialized = False
       
     async def initialize(self):
         """Initialize all system components."""
+        if self.initialized:
+            logger.info("System already initialized")
+            return
+            
         logger.info("Initializing CPG Compliance Monitoring System...")
       
-        # Initialize services
-        await self.blob_storage.initialize()
-        await self.a2a_protocol.initialize()
-      
-        # Setup mock data if in development mode
-        if self.settings.ENVIRONMENT == "development":
-            await self.setup_mock_data()
-          
-        logger.info("System initialization complete.")
+        try:
+            # Initialize services in proper order
+            await self.blob_storage.initialize()
+            await self.a2a_protocol.initialize()
+            
+            # CRITICAL: Initialize the orchestrator (this was missing!)
+            await self.orchestrator.initialize()
+            
+            # Setup mock data if in development mode
+            if self.settings.ENVIRONMENT == "development":
+                await self.setup_mock_data()
+            
+            self.initialized = True
+            logger.info("System initialization complete.")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize system: {str(e)}")
+            raise
   
     async def setup_mock_data(self):
         """Setup mock data for development/testing."""
         logger.info("Setting up mock data...")
       
-        # Generate mock contracts
-        contracts = self.mock_generator.generate_contracts(5)
-        for contract in contracts:
-            await self.blob_storage.upload_contract(contract)
-          
-        # Generate mock planograms
-        planograms = self.mock_generator.generate_planograms(10)
-        for planogram in planograms:
-            await self.blob_storage.upload_planogram(planogram)
-          
-        # Generate mock store images
-        images = self.mock_generator.generate_store_images(20)
-        for image in images:
-            await self.blob_storage.upload_image(image)
-          
-        logger.info("Mock data setup complete.")
+        try:
+            # Generate mock contracts
+            contracts = self.mock_generator.generate_contracts(5)
+            for contract in contracts:
+                await self.blob_storage.upload_contract(contract)
+              
+            # Generate mock planograms
+            planograms = self.mock_generator.generate_planograms(10)
+            for planogram in planograms:
+                await self.blob_storage.upload_planogram(planogram)
+              
+            # Generate mock store images
+            images = self.mock_generator.generate_store_images(20)
+            for image in images:
+                await self.blob_storage.upload_image(image)
+              
+            logger.info("Mock data setup complete.")
+            
+        except Exception as e:
+            logger.error(f"Error setting up mock data: {str(e)}")
+            # Don't fail initialization if mock data setup fails
   
     async def run_daily_compliance_check(self, store_id: str = None):
         """Run the daily compliance monitoring workflow."""
+        # Ensure system is initialized
+        if not self.initialized:
+            await self.initialize()
+            
         logger.info(f"Starting daily compliance check for store: {store_id or 'all stores'}")
       
         try:
@@ -84,6 +107,10 @@ class ComplianceMonitoringSystem:
   
     async def run_continuous_monitoring(self):
         """Run continuous monitoring mode."""
+        # Ensure system is initialized
+        if not self.initialized:
+            await self.initialize()
+            
         logger.info("Starting continuous monitoring mode...")
       
         while True:
@@ -92,7 +119,8 @@ class ComplianceMonitoringSystem:
                 await self.run_daily_compliance_check()
               
                 # Wait for next cycle (configurable interval)
-                await asyncio.sleep(self.settings.MONITORING_INTERVAL)
+                monitoring_interval = getattr(self.settings, 'MONITORING_INTERVAL', 3600)  # Default 1 hour
+                await asyncio.sleep(monitoring_interval)
               
             except KeyboardInterrupt:
                 logger.info("Stopping continuous monitoring...")
@@ -100,20 +128,92 @@ class ComplianceMonitoringSystem:
             except Exception as e:
                 logger.error(f"Error in continuous monitoring: {str(e)}")
                 await asyncio.sleep(60)  # Wait before retrying
+    
+    async def get_compliance_report(self, store_id: str, date: str = None):
+        """Get compliance report for a specific store and date."""
+        # Ensure system is initialized
+        if not self.initialized:
+            await self.initialize()
+            
+        logger.info(f"Getting compliance report for store: {store_id}, date: {date}")
+        
+        try:
+            # Get recent workflows for the store
+            recent_workflows = await self.orchestrator.get_recent_workflows(limit=10)
+            
+            # Filter by store_id if provided
+            if store_id:
+                recent_workflows = [w for w in recent_workflows if w.store_id == store_id]
+            
+            # Convert to dict format for JSON serialization
+            report = {
+                "store_id": store_id,
+                "date": date or datetime.now().date().isoformat(),
+                "workflows": [
+                    {
+                        "workflow_id": w.workflow_id,
+                        "status": w.status.value,
+                        "started_at": w.started_at.isoformat(),
+                        "completed_at": w.completed_at.isoformat() if w.completed_at else None,
+                        "result": w.result
+                    }
+                    for w in recent_workflows
+                ]
+            }
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error getting compliance report: {str(e)}")
+            raise
+    
+    async def shutdown(self):
+        """Gracefully shutdown the system."""
+        logger.info("Shutting down CPG Compliance Monitoring System...")
+        
+        try:
+            # Shutdown components in reverse order
+            if hasattr(self.orchestrator, 'shutdown'):
+                await self.orchestrator.shutdown()
+            
+            if hasattr(self.a2a_protocol, 'shutdown'):
+                await self.a2a_protocol.shutdown()
+                
+            if hasattr(self.blob_storage, 'shutdown'):
+                await self.blob_storage.shutdown()
+                
+            self.initialized = False
+            logger.info("System shutdown complete.")
+            
+        except Exception as e:
+            logger.error(f"Error during shutdown: {str(e)}")
+
+# Global system instance
+_system_instance = None
+
+async def get_system() -> ComplianceMonitoringSystem:
+    """Get or create the global system instance."""
+    global _system_instance
+    if _system_instance is None:
+        _system_instance = ComplianceMonitoringSystem()
+        await _system_instance.initialize()
+    return _system_instance
 
 async def main():
     """Main application entry point."""
-    system = ComplianceMonitoringSystem()
-  
+    system = None
     try:
-        await system.initialize()
-      
+        # Initialize the system
+        system = await get_system()
+        
         # Run based on configuration
-        if system.settings.RUN_MODE == "continuous":
+        run_mode = getattr(system.settings, 'RUN_MODE', 'single')
+        
+        if run_mode == "continuous":
             await system.run_continuous_monitoring()
         else:
             # Single run mode
-            result = await system.run_daily_compliance_check()
+            result = await system.run_daily_compliance_check("STORE_0001")
             print(f"Compliance check result: {result}")
           
     except KeyboardInterrupt:
@@ -121,6 +221,9 @@ async def main():
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
         raise
+    finally:
+        if system:
+            await system.shutdown()
 
 if __name__ == "__main__":
     asyncio.run(main())
