@@ -85,6 +85,24 @@ docker-compose logs -f
 docker-compose down
 ```
 
+#### Available CLI Commands:
+```
+# Check compliance for a store
+python3.12 cli.py check-compliance --store-id STORE_0001
+
+# List recent workflows
+python3.12 cli.py list-workflows --limit 5
+
+# Get status of specific workflow
+python3.12 cli.py get-status --workflow-id abc-123-def
+
+# Test the system
+python3.12 cli.py test-system
+
+# Start continuous monitoring
+python3.12 cli.py monitor --interval 60 --stores STORE_0001,STORE_0002
+```
+
 ### Access Points
 - Dashboard: http://localhost:3000
 - API: http://localhost:8000

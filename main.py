@@ -43,7 +43,6 @@ class ComplianceMonitoringSystem:
             await self.blob_storage.initialize()
             await self.a2a_protocol.initialize()
             
-            # CRITICAL: Initialize the orchestrator (this was missing!)
             await self.orchestrator.initialize()
             
             # Setup mock data if in development mode

@@ -4,15 +4,12 @@ Command Line Interface for CPG Compliance AI Agents
 
 import asyncio
 import click
-import json
 import logging
-from datetime import datetime, date
-from pathlib import Path
+from datetime import datetime, date as date_module
+from typing import Optional
 
-from main import get_system, ComplianceMonitoringSystem
-from config.settings import Settings
+from main import ComplianceMonitoringSystem
 from config.logging_config import setup_logging
-from utils.mock_data_generator import MockDataGenerator
 
 # Setup logging
 setup_logging()
@@ -21,229 +18,269 @@ logger = logging.getLogger(__name__)
 @click.group()
 @click.version_option(version="1.0.0")
 def cli():
-    """CPG Compliance AI Agents CLI"""
+    """CPG Compliance AI Agents - Command Line Interface"""
     pass
 
 @cli.command()
-@click.option('--store-id', help='Specific store ID to check')
-@click.option('--date', help='Date for compliance check (YYYY-MM-DD)')
-@click.option('--output', '-o', help='Output file for results')
-def check_compliance(store_id, date, output):
-    """Run compliance check for specified store and date."""
+@click.option('--store-id', required=True, help='Store ID to check compliance for')
+@click.option('--date', 'date_str', help='Date for compliance check (YYYY-MM-DD format)', default=None)
+@click.option('--output', help='Output format (json/table)', default='table')
+def check_compliance(store_id: str, date_str: Optional[str], output: str):
+    """Run compliance check for a specific store."""
     
     async def run_check():
-        system = None
         try:
-            # Get the initialized system
-            system = await get_system()
-            
             # Parse date if provided
-            check_date = None
-            if date:
-                try:
-                    check_date = datetime.strptime(date, '%Y-%m-%d').date()
-                except ValueError:
-                    click.echo(f"❌ Invalid date format: {date}. Use YYYY-MM-DD format.", err=True)
-                    return
+            check_date = datetime.fromisoformat(date_str).date() if date_str else date_module.today()
             
-            # Run compliance check
-            click.echo(f"🔍 Running compliance check for store: {store_id or 'default'}")
-            result = await system.run_daily_compliance_check(store_id)
+            # Initialize system
+            system = ComplianceMonitoringSystem()
+            await system.initialize()
             
-            # Format result for display
-            if output:
-                with open(output, 'w') as f:
-                    json.dump(result, f, indent=2, default=str)
-                click.echo(f"✅ Results saved to {output}")
+            click.echo(f"🔍 Running compliance check for store: {store_id}")
+            
+            # Call the orchestrator directly since that's what actually has the workflow method
+            result = await system.orchestrator.run_compliance_workflow(store_id, check_date)
+            
+            # Display results based on output format
+            if output == 'json':
+                import json
+                # Convert WorkflowResult to dict for JSON output
+                result_dict = {
+                    'workflow_id': result.workflow_id,
+                    'store_id': result.store_id,
+                    'date': result.date.isoformat(),
+                    'status': result.status.value,
+                    'compliance_score': result.compliance_score,
+                    'violations': result.violations,
+                    'recommendations': result.recommendations,
+                    'started_at': result.started_at.isoformat(),
+                    'completed_at': result.completed_at.isoformat() if result.completed_at else None,
+                    'error_message': result.error_message
+                }
+                click.echo(json.dumps(result_dict, indent=2))
             else:
-                # Display formatted results
-                click.echo(f"\n✅ Compliance check completed!")
+                # Table format (default)
+                click.echo("\n✅ Compliance check completed!")
                 click.echo(f"Store ID: {result.store_id}")
                 click.echo(f"Date: {result.date}")
                 click.echo(f"Status: {result.status.value}")
-                click.echo(f"Compliance Score: {result.compliance_score or 'N/A'}")
-                click.echo(f"Workflow ID: {result.workflow_id or 'N/A'}")
+                click.echo(f"Compliance Score: {result.compliance_score}")
+                click.echo(f"Violations: {len(result.violations)}")
+                click.echo(f"Recommendations: {len(result.recommendations)}")
+                click.echo(f"Workflow ID: {result.workflow_id}")
                 
+                # Show violations if any
                 if result.violations:
-                    click.echo(f"Violations Found: {len(result['violations'])}")
+                    click.echo("\n⚠️  Violations found:")
+                    for i, violation in enumerate(result.violations, 1):
+                        if isinstance(violation, dict):
+                            click.echo(f"  {i}. {violation.get('description', str(violation))}")
+                        else:
+                            click.echo(f"  {i}. {violation}")
                 
+                # Show recommendations if any
                 if result.recommendations:
-                    click.echo(f"Recommendations: {len(result['recommendations'])}")
-                
-                # Show detailed JSON if requested
-                if click.confirm('\nShow detailed results?'):
-                    click.echo(json.dumps(result, indent=2, default=str))
-                    
+                    click.echo("\n💡 Recommendations:")
+                    for i, rec in enumerate(result.recommendations, 1):
+                        click.echo(f"  {i}. {rec}")
+            
+            # Shutdown system
+            await system.shutdown()
+            
         except Exception as e:
             logger.error(f"CLI error: {str(e)}")
-            click.echo(f"❌ Error: {str(e)}", err=True)
+            click.echo(f"❌ Error: {str(e)}")
             raise
-        finally:
-            if system:
-                await system.shutdown()
-  
+    
     asyncio.run(run_check())
 
 @cli.command()
-@click.option('--store-id', help='Specific store ID to get report for')
-@click.option('--date', help='Date for report (YYYY-MM-DD)')
-@click.option('--output', '-o', help='Output file for report')
-def get_report(store_id, date, output):
-    """Get compliance report for a specific store."""
+@click.option('--store-id', help='Filter by store ID')
+@click.option('--limit', default=10, help='Number of recent workflows to show')
+@click.option('--status', help='Filter by status (completed/failed/running)')
+def list_workflows(store_id: Optional[str], limit: int, status: Optional[str]):
+    """List recent compliance workflows."""
     
-    async def run_report():
-        system = None
+    async def run_list():
         try:
-            system = await get_system()
+            system = ComplianceMonitoringSystem()
+            await system.initialize()
             
-            # Get compliance report
-            click.echo(f"📊 Getting compliance report for store: {store_id or 'all'}")
-            report = await system.get_compliance_report(store_id, date)
+            # Get recent workflows
+            workflows = await system.orchestrator.get_recent_workflows(limit)
             
-            if output:
-                with open(output, 'w') as f:
-                    json.dump(report, f, indent=2, default=str)
-                click.echo(f"✅ Report saved to {output}")
-            else:
-                # Display formatted report
-                click.echo(f"\n📊 Compliance Report")
-                click.echo(f"Store ID: {report.get('store_id', 'All')}")
-                click.echo(f"Date: {report.get('date', 'N/A')}")
-                click.echo(f"Workflows Found: {len(report.get('workflows', []))}")
-                
-                # Show workflow summary
-                for workflow in report.get('workflows', [])[:5]:  # Show first 5
-                    click.echo(f"  - {workflow['workflow_id']}: {workflow['status']}")
-                
-                if click.confirm('\nShow detailed report?'):
-                    click.echo(json.dumps(report, indent=2, default=str))
-                    
+            # Apply filters
+            if store_id:
+                workflows = [w for w in workflows if w.store_id == store_id]
+            
+            if status:
+                workflows = [w for w in workflows if w.status.value == status]
+            
+            if not workflows:
+                click.echo("No workflows found matching the criteria.")
+                return
+            
+            # Display workflows
+            click.echo(f"\n📋 Recent Workflows ({len(workflows)} found):")
+            click.echo("-" * 80)
+            
+            for workflow in workflows:
+                click.echo(f"ID: {workflow.workflow_id}")
+                click.echo(f"Store: {workflow.store_id}")
+                click.echo(f"Date: {workflow.date}")
+                click.echo(f"Status: {workflow.status.value}")
+                click.echo(f"Score: {workflow.compliance_score}")
+                click.echo(f"Started: {workflow.started_at}")
+                if workflow.completed_at:
+                    duration = workflow.completed_at - workflow.started_at
+                    click.echo(f"Duration: {duration.total_seconds():.1f}s")
+                click.echo("-" * 40)
+            
+            await system.shutdown()
+            
         except Exception as e:
             logger.error(f"CLI error: {str(e)}")
-            click.echo(f"❌ Error: {str(e)}", err=True)
-            raise
-        finally:
-            if system:
-                await system.shutdown()
+            click.echo(f"❌ Error: {str(e)}")
     
-    asyncio.run(run_report())
+    asyncio.run(run_list())
 
 @cli.command()
-@click.option('--contracts', default=5, help='Number of mock contracts to generate')
-@click.option('--planograms', default=10, help='Number of mock planograms to generate')
-@click.option('--images', default=20, help='Number of mock images to generate')
-def generate_mock_data(contracts, planograms, images):
-    """Generate mock data for testing."""
+@click.option('--workflow-id', required=True, help='Workflow ID to get status for')
+def get_status(workflow_id: str):
+    """Get status of a specific workflow."""
     
-    async def generate():
-        system = None
+    async def run_status():
         try:
-            generator = MockDataGenerator()
-            system = await get_system()
+            system = ComplianceMonitoringSystem()
+            await system.initialize()
             
-            click.echo("🔧 Generating mock data...")
+            workflow = await system.orchestrator.get_workflow_status(workflow_id)
             
-            # Generate contracts
-            click.echo(f"Generating {contracts} contracts...")
-            contract_data = generator.generate_contracts(contracts)
-            for contract in contract_data:
-                await system.blob_storage.upload_contract(contract)
+            if not workflow:
+                click.echo(f"❌ Workflow {workflow_id} not found.")
+                return
             
-            # Generate planograms
-            click.echo(f"Generating {planograms} planograms...")
-            planogram_data = generator.generate_planograms(planograms)
-            for planogram in planogram_data:
-                await system.blob_storage.upload_planogram(planogram)
+            click.echo(f"\n📊 Workflow Status:")
+            click.echo(f"ID: {workflow.workflow_id}")
+            click.echo(f"Store: {workflow.store_id}")
+            click.echo(f"Date: {workflow.date}")
+            click.echo(f"Status: {workflow.status.value}")
+            click.echo(f"Started: {workflow.started_at}")
             
-            # Generate images
-            click.echo(f"Generating {images} images...")
-            image_data = generator.generate_store_images(images)
-            for image in image_data:
-                await system.blob_storage.upload_image(image)
+            if workflow.completed_at:
+                duration = workflow.completed_at - workflow.started_at
+                click.echo(f"Completed: {workflow.completed_at}")
+                click.echo(f"Duration: {duration.total_seconds():.1f}s")
             
-            click.echo(f"✅ Generated {contracts} contracts, {planograms} planograms, {images} images")
+            if workflow.compliance_score is not None:
+                click.echo(f"Compliance Score: {workflow.compliance_score}")
+            
+            if workflow.violations:
+                click.echo(f"Violations: {len(workflow.violations)}")
+            
+            if workflow.recommendations:
+                click.echo(f"Recommendations: {len(workflow.recommendations)}")
+            
+            if workflow.error_message:
+                click.echo(f"Error: {workflow.error_message}")
+            
+            await system.shutdown()
             
         except Exception as e:
-            logger.error(f"Mock data generation error: {str(e)}")
-            click.echo(f"❌ Error: {str(e)}", err=True)
-            raise
-        finally:
-            if system:
-                await system.shutdown()
-  
-    asyncio.run(generate())
+            logger.error(f"CLI error: {str(e)}")
+            click.echo(f"❌ Error: {str(e)}")
+    
+    asyncio.run(run_status())
 
 @cli.command()
-def start_monitoring():
+@click.option('--interval', default=3600, help='Monitoring interval in seconds')
+@click.option('--stores', help='Comma-separated list of store IDs to monitor')
+def monitor(interval: int, stores: Optional[str]):
     """Start continuous compliance monitoring."""
     
-    async def monitor():
-        system = None
+    async def run_monitor():
         try:
-            system = await get_system()
-            click.echo("🔄 Starting continuous monitoring... (Press Ctrl+C to stop)")
-            await system.run_continuous_monitoring()
-        except KeyboardInterrupt:
-            click.echo("\n⏹️  Monitoring stopped by user.")
-        except Exception as e:
-            logger.error(f"Monitoring error: {str(e)}")
-            click.echo(f"❌ Error: {str(e)}", err=True)
-            raise
-        finally:
-            if system:
-                await system.shutdown()
-  
-    asyncio.run(monitor())
-
-@cli.command()
-@click.option('--port', default=8000, help='API server port')
-def start_api(port):
-    """Start the REST API server."""
-    try:
-        import uvicorn
-        from api.main import app
-        
-        click.echo(f"🚀 Starting API server on port {port}...")
-        uvicorn.run(app, host="0.0.0.0", port=port)
-    except ImportError:
-        click.echo("❌ API dependencies not installed. Install with: pip install uvicorn fastapi", err=True)
-    except Exception as e:
-        click.echo(f"❌ Error starting API server: {str(e)}", err=True)
-
-@cli.command()
-def status():
-    """Show system status and configuration."""
-    
-    async def check_status():
-        try:
-            settings = Settings()
+            system = ComplianceMonitoringSystem()
+            await system.initialize()
             
-            click.echo("=== CPG Compliance AI Agents Status ===")
-            click.echo(f"Environment: {settings.ENVIRONMENT}")
-            click.echo(f"Run Mode: {getattr(settings, 'RUN_MODE', 'single')}")
-            click.echo(f"Monitoring Interval: {getattr(settings, 'MONITORING_INTERVAL', 3600)}s")
-            click.echo(f"Compliance Threshold: {settings.COMPLIANCE_THRESHOLD}%")
-            click.echo(f"Data Directory: {settings.DATA_DIR}")
+            store_list = stores.split(',') if stores else ['STORE_0001', 'STORE_0002']
             
-            # Check service status
-            click.echo("\n=== Service Status ===")
-            click.echo("✓ Configuration loaded")
-            click.echo("✓ Logging configured")
+            click.echo(f"🔄 Starting continuous monitoring...")
+            click.echo(f"Stores: {', '.join(store_list)}")
+            click.echo(f"Interval: {interval} seconds")
+            click.echo("Press Ctrl+C to stop monitoring")
             
-            # Try to initialize system to check health
             try:
-                system = await get_system()
-                click.echo("✓ System initialization successful")
-                click.echo(f"✓ System initialized: {system.initialized}")
-                await system.shutdown()
-            except Exception as e:
-                click.echo(f"❌ System initialization failed: {str(e)}")
-                
+                while True:
+                    for store_id in store_list:
+                        click.echo(f"\n🔍 Checking store: {store_id}")
+                        result = await system.orchestrator.run_compliance_workflow(store_id, date_module.today())
+                        
+                        click.echo(f"✅ {store_id}: Score {result.compliance_score}, "
+                                 f"Violations: {len(result.violations)}")
+                    
+                    click.echo(f"\n⏰ Waiting {interval} seconds until next check...")
+                    await asyncio.sleep(interval)
+                    
+            except KeyboardInterrupt:
+                click.echo("\n🛑 Monitoring stopped by user")
+            
+            await system.shutdown()
+            
         except Exception as e:
-            logger.error(f"Status check error: {str(e)}")
-            click.echo(f"❌ Error checking status: {str(e)}", err=True)
+            logger.error(f"CLI error: {str(e)}")
+            click.echo(f"❌ Error: {str(e)}")
     
-    asyncio.run(check_status())
+    asyncio.run(run_monitor())
+
+@cli.command()
+def test_system():
+    """Test system components and connectivity."""
+    
+    async def run_test():
+        try:
+            click.echo("🧪 Testing system components...")
+            
+            system = ComplianceMonitoringSystem()
+            await system.initialize()
+            
+            # Test orchestrator
+            click.echo("✅ CrewAI Orchestrator: OK")
+            
+            # Test blob storage
+            if system.blob_storage:
+                click.echo("✅ Azure Blob Storage: OK (Mock mode)")
+            else:
+                click.echo("⚠️  Azure Blob Storage: Not configured")
+            
+            # Test A2A protocol
+            if system.a2a_protocol:
+                click.echo("✅ A2A Protocol: OK")
+            else:
+                click.echo("⚠️  A2A Protocol: Not configured")
+            
+            # Run a quick test workflow
+            click.echo("\n🔍 Running test compliance check...")
+            result = await system.orchestrator.run_compliance_workflow("TEST_STORE", date_module.today())
+            
+            if result.status.value == 'completed':
+                click.echo("✅ Test workflow: PASSED")
+                click.echo(f"   Score: {result.compliance_score}")
+                click.echo(f"   Duration: {(result.completed_at - result.started_at).total_seconds():.1f}s")
+            else:
+                click.echo("❌ Test workflow: FAILED")
+                if result.error_message:
+                    click.echo(f"   Error: {result.error_message}")
+            
+            await system.shutdown()
+            click.echo("\n🎉 System test completed!")
+            
+        except Exception as e:
+            logger.error(f"CLI error: {str(e)}")
+            click.echo(f"❌ System test failed: {str(e)}")
+    
+    asyncio.run(run_test())
 
 if __name__ == '__main__':
     cli()
