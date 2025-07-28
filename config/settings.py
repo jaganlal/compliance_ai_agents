@@ -18,18 +18,18 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "CPG Compliance AI Agents"
     VERSION: str = "1.0.0"
-    RUN_MODE: str = Field(default="single", env="RUN_MODE")  # single, continuous
+    RUN_MODE: str = Field(default="single", env="RUN_MODE")
   
     # Monitoring
-    MONITORING_INTERVAL: int = Field(default=3600, env="MONITORING_INTERVAL")  # seconds
-    COMPLIANCE_THRESHOLD: float = Field(default=85.0, env="COMPLIANCE_THRESHOLD")  # percentage
+    MONITORING_INTERVAL: int = Field(default=3600, env="MONITORING_INTERVAL")
+    COMPLIANCE_THRESHOLD: float = Field(default=85.0, env="COMPLIANCE_THRESHOLD")
   
     # Directories
     BASE_DIR: Path = Path(__file__).parent.parent
     DATA_DIR: Path = BASE_DIR / "data"
     LOGS_DIR: Path = BASE_DIR / "logs"
   
-    # Azure Services (mocked locally)
+    # Azure Services
     AZURE_STORAGE_CONNECTION_STRING: str = Field(default="mock://localhost", env="AZURE_STORAGE_CONNECTION_STRING")
     AZURE_SERVICE_BUS_CONNECTION_STRING: str = Field(default="mock://localhost", env="AZURE_SERVICE_BUS_CONNECTION_STRING")
     AZURE_COGNITIVE_SERVICES_KEY: str = Field(default="mock-key", env="AZURE_COGNITIVE_SERVICES_KEY")
@@ -48,19 +48,24 @@ class Settings(BaseSettings):
   
     # Agent Configuration
     MAX_CONCURRENT_AGENTS: int = Field(default=5, env="MAX_CONCURRENT_AGENTS")
-    AGENT_TIMEOUT: int = Field(default=300, env="AGENT_TIMEOUT")  # seconds
+    AGENT_TIMEOUT: int = Field(default=300, env="AGENT_TIMEOUT")
   
     # Memory Configuration
     MEMORY_RETENTION_DAYS: int = Field(default=30, env="MEMORY_RETENTION_DAYS")
-    CACHE_TTL: int = Field(default=3600, env="CACHE_TTL")  # seconds
+    CACHE_TTL: int = Field(default=3600, env="CACHE_TTL")
   
-    # OpenAI Configuration (for LLM agents)
+    # OpenAI Configuration
     OPENAI_API_KEY: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     OPENAI_MODEL: str = Field(default="gpt-4", env="OPENAI_MODEL")
-  
+
+    @property
+    def is_mock_mode(self) -> bool:
+        return self.ENVIRONMENT == "mock"
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # This allows extra fields to be ignored
   
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

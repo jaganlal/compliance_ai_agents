@@ -22,7 +22,7 @@ class BlobStorageService:
         self.mock_blobs = {}
       
     async def initialize(self):
-        """Initialize the blob storage service - THIS WAS MISSING!"""
+        """Initialize the blob storage service"""
         try:
             if self.connection_string:
                 self.blob_service_client = BlobServiceClient.from_connection_string(
